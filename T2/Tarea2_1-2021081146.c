@@ -1,68 +1,57 @@
-/*
-Cree un proceso padre que cree 10 procesos hijos a los cuáles les pasará mediante memoria compartida dos números aleatorios 
-que ellos deberán sumar e imprimir. Puede usar r = rand() % n; para generar un número random entre 0 y n.
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/wait.h>
-#include <unistd.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <unistd.h>
 #include <time.h>
 
 int main() {
-    int shmId;
+    int shmID;
+    int *nums;
+    int size = 2 * sizeof(int); // Espacio para dos enteros
     pid_t pid;
-    int *memoria = NULL;
-    int n = 10; // Número de procesos hijos
-    int i;
+    key_t key = 123; // Clave privada
 
-    // Inicializar la semilla para generar números aleatorios
+    // Inicializar generador de números aleatorios
     srand(time(NULL));
 
-    // Crear un segmento de memoria compartida
-    shmId = shmget(IPC_PRIVATE, sizeof(int) * 2, IPC_CREAT | 0666);
-    if (shmId < 0) {
+    // Crear segmento de memoria compartida
+    shmID = shmget(key, size, IPC_CREAT | 0666);
+    if (shmID < 0) {
         perror("shmget");
         exit(1);
     }
 
-    // Adjuntar el segmento de memoria compartida
-    memoria = (int *)shmat(shmId, NULL, 0);
-    if (memoria == (void *)-1) {
-        perror("shmat");
+    // Adjuntar segmento de memoria compartida
+    nums = (int *)shmat(shmID, NULL, 0);
+    if (nums == (int *)(-1)) {
+        perror("No se pudo crear la memoria compartida");
         exit(1);
     }
 
-    // Generar dos números aleatorios y guardarlos en la memoria compartida
-    memoria[0] = rand() % 100; // Número entre 0 y 99
-    memoria[1] = rand() % 100; // Número entre 0 y 99
-
-    for (i = 0; i < n; i++) {
+    for (int i = 0; i < 10; i++) {
+        // Generar dos números aleatorios y guardarlos en memoria compartida
+  
         pid = fork();
+        nums[0] = rand() % 100; // Número entre 0 y 99
+        nums[1] = rand() % 100; // Número entre 0 y 99  
         if (pid < 0) {
-            perror("fork");
+            // Error al crear proceso hijo
+            perror("No se pudo crear el proceso hijo");
             exit(1);
         } else if (pid == 0) {
             // Proceso hijo
-            printf("Hijo %d: %d + %d = %d\n", i+1, memoria[0], memoria[1], memoria[0] + memoria[1]);
-            // Desconectar el segmento de memoria compartida
-            shmdt((void *)memoria);
-            exit(0);
+            printf("Hijo %d: %d + %d = %d\n", i, nums[0], nums[1], nums[0] + nums[1]);
+            exit(0); // Terminar proceso hijo
         }
     }
 
     // Esperar a que todos los hijos terminen
-    while (n > 0) {
-        wait(NULL);
-        n--;
-    }
+    while (wait(NULL) > 0);
 
-    // Desconectar el segmento de memoria compartida
-    shmdt((void *)memoria);
-    // Eliminar el segmento de memoria compartida
-    shmctl(shmId, IPC_RMID, NULL);
+    // Desadjuntar y eliminar memoria compartida
+    shmdt(nums);
+    shmctl(shmID, IPC_RMID, NULL);
 
     return 0;
 }
